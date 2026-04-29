@@ -14,7 +14,7 @@ import {
   Check,
   Loader2,
   Sparkles,
-  Mix,
+  Blend,
   ChevronDown,
   RotateCcw,
 } from "lucide-react";
@@ -113,7 +113,7 @@ export default function BreederSection() {
       <Card className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-slate-700/50">
         <CardContent className="p-6">
           <div className="flex items-center gap-2 mb-4">
-            <Mix className="w-5 h-5 text-purple-400" />
+            <Blend className="w-5 h-5 text-purple-400" />
             <h3 className="text-lg font-semibold text-white">
               Step 1: Choose Parent Models
             </h3>
