@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
+import { aiChat, generateBreedFallback } from "@/lib/ai-helper";
 
 export async function POST(request: Request) {
   try {
@@ -13,14 +13,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const zai = await ZAI.create();
+    const modelNames = modelIds.join(", ");
+    const traitsStr = traits?.join(", ") || "balanced, helpful";
+    const task = taskDescription || "general-purpose AI assistant";
+    const toneStr = tone || "professional and friendly";
 
     const prompt = `You are an expert AI prompt engineer. Based on the following selected AI models and user preferences, generate a comprehensive, professional system prompt.
 
-Selected AI models for inspiration: ${modelIds.join(", ")}
-Desired traits: ${traits?.join(", ") || "balanced, helpful"}
-Task description: ${taskDescription || "general-purpose AI assistant"}
-Preferred tone: ${tone || "professional and friendly"}
+Selected AI models for inspiration: ${modelNames}
+Desired traits: ${traitsStr}
+Task description: ${task}
+Preferred tone: ${toneStr}
 
 Analyze the system prompt patterns from these AI models (which are known for their specific strengths) and create a hybrid system prompt that:
 1. Combines the best traits from each selected model
@@ -31,8 +34,8 @@ Analyze the system prompt patterns from these AI models (which are known for the
 
 Return ONLY the system prompt text, nothing else. No markdown code blocks, no explanations.`;
 
-    const completion = await zai.chat.completions.create({
-      messages: [
+    const generatedPrompt = await aiChat(
+      [
         {
           role: "system",
           content:
@@ -40,13 +43,9 @@ Return ONLY the system prompt text, nothing else. No markdown code blocks, no ex
         },
         { role: "user", content: prompt },
       ],
-      temperature: 0.7,
-      max_tokens: 4000,
-    });
-
-    const generatedPrompt =
-      completion.choices?.[0]?.message?.content ||
-      "Failed to generate prompt.";
+      { temperature: 0.7, max_tokens: 4000 },
+      () => generateBreedFallback(modelIds, traits || [], taskDescription || "", tone || "formal")
+    );
 
     return NextResponse.json({ prompt: generatedPrompt });
   } catch (error) {

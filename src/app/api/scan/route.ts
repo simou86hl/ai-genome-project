@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
+import { aiChat, analyzeScanFallback } from "@/lib/ai-helper";
 
 export async function POST(request: Request) {
   try {
@@ -13,9 +13,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const zai = await ZAI.create();
-
-    const analysisPrompt = `You are an expert system prompt analyzer. Analyze the following system prompt and provide a detailed health report in JSON format.
+    // Try AI-powered analysis first, fall back to heuristic analysis
+    const aiResult = await aiChat(
+      [
+        {
+          role: "system",
+          content:
+            "You are a prompt analysis tool. Return ONLY valid JSON, no markdown or code blocks.",
+        },
+        {
+          role: "user",
+          content: `You are an expert system prompt analyzer. Analyze the following system prompt and provide a detailed health report in JSON format.
 
 System Prompt to analyze:
 """
@@ -26,70 +34,30 @@ Analyze and return a JSON object (NO markdown, NO code blocks, ONLY raw JSON) wi
 {
   "overallScore": <number 0-100>,
   "grades": {
-    "completeness": {
-      "score": <number 0-100>,
-      "label": "Completeness",
-      "icon": "✅",
-      "details": "<string explaining if role, constraints, guidelines, output format are defined>"
-    },
-    "safety": {
-      "score": <number 0-100>,
-      "label": "Safety",
-      "icon": "🛡️",
-      "details": "<string explaining protection against prompt injection, harmful content, etc>"
-    },
-    "clarity": {
-      "score": <number 0-100>,
-      "label": "Clarity",
-      "icon": "📏",
-      "details": "<string explaining how clear and unambiguous the instructions are>"
-    },
-    "taskAlignment": {
-      "score": <number 0-100>,
-      "label": "Task Alignment",
-      "icon": "🎯",
-      "details": "<string explaining if the prompt language aligns with its stated purpose>"
-    },
-    "tokenEfficiency": {
-      "score": <number 0-100>,
-      "label": "Token Efficiency",
-      "icon": "⚡",
-      "details": "<string about whether the prompt is concise or has unnecessary fluff>"
-    },
-    "structure": {
-      "score": <number 0-100>,
-      "label": "Structure",
-      "icon": "🏗️",
-      "details": "<string about organization, sections, formatting>"
-    }
+    "completeness": { "score": <number 0-100>, "label": "Completeness", "icon": "✅", "details": "<string>" },
+    "safety": { "score": <number 0-100>, "label": "Safety", "icon": "🛡️", "details": "<string>" },
+    "clarity": { "score": <number 0-100>, "label": "Clarity", "icon": "📏", "details": "<string>" },
+    "taskAlignment": { "score": <number 0-100>, "label": "Task Alignment", "icon": "🎯", "details": "<string>" },
+    "tokenEfficiency": { "score": <number 0-100>, "label": "Token Efficiency", "icon": "⚡", "details": "<string>" },
+    "structure": { "score": <number 0-100>, "label": "Structure", "icon": "🏗️", "details": "<string>" }
   },
   "strengths": ["<string>", "<string>", "<string>"],
   "weaknesses": ["<string>", "<string>", "<string>"],
   "suggestions": ["<string>", "<string>", "<string>"],
-  "tokenEstimate": <estimated token count as number>,
-  "wordCount": <word count as number>
+  "tokenEstimate": <number>,
+  "wordCount": <number>
 }
 
-Be honest and thorough in your analysis. Return ONLY the JSON object.`;
-
-    const completion = await zai.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a prompt analysis tool. Return ONLY valid JSON, no markdown or code blocks.",
+Be honest and thorough in your analysis. Return ONLY the JSON object.`,
         },
-        { role: "user", content: analysisPrompt },
       ],
-      temperature: 0.3,
-      max_tokens: 3000,
-    });
+      { temperature: 0.3, max_tokens: 3000 },
+      () => JSON.stringify(analyzeScanFallback(prompt))
+    );
 
+    // Parse the AI response or use fallback
     let result;
-    const content = completion.choices?.[0]?.message?.content || "";
-
-    // Clean the response - remove markdown code blocks if present
-    const cleaned = content
+    const cleaned = aiResult
       .replace(/```json\n?/g, "")
       .replace(/```\n?/g, "")
       .trim();
@@ -97,25 +65,7 @@ Be honest and thorough in your analysis. Return ONLY the JSON object.`;
     try {
       result = JSON.parse(cleaned);
     } catch {
-      // Fallback: create a basic analysis ourselves
-      const wordCount = prompt.trim().split(/\s+/).length;
-      const tokenEstimate = Math.ceil(wordCount * 1.3);
-      result = {
-        overallScore: 50,
-        grades: {
-          completeness: { score: 50, label: "Completeness", icon: "✅", details: "Unable to fully analyze. Please try again." },
-          safety: { score: 50, label: "Safety", icon: "🛡️", details: "Unable to fully analyze." },
-          clarity: { score: 50, label: "Clarity", icon: "📏", details: "Unable to fully analyze." },
-          taskAlignment: { score: 50, label: "Task Alignment", icon: "🎯", details: "Unable to fully analyze." },
-          tokenEfficiency: { score: 50, label: "Token Efficiency", icon: "⚡", details: "Unable to fully analyze." },
-          structure: { score: 50, label: "Structure", icon: "🏗️", details: "Unable to fully analyze." },
-        },
-        strengths: ["Submitted for analysis"],
-        weaknesses: ["Could not complete full analysis"],
-        suggestions: ["Try breaking your prompt into clearer sections"],
-        tokenEstimate,
-        wordCount,
-      };
+      result = analyzeScanFallback(prompt);
     }
 
     return NextResponse.json(result);

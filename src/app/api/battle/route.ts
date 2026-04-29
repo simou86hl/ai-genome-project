@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
+import { aiChat } from "@/lib/ai-helper";
 
 export async function POST(request: Request) {
   try {
@@ -13,23 +13,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const zai = await ZAI.create();
-
-    const completion = await zai.chat.completions.create({
-      messages: [
+    const response = await aiChat(
+      [
         { role: "system", content: prompt },
         { role: "user", content: question },
       ],
-      temperature: 0.7,
-      max_tokens: 1500,
-    });
-
-    const response = completion.choices?.[0]?.message?.content || "No response generated.";
+      { temperature: 0.7, max_tokens: 1500 },
+      () => `[Simulated Response] Based on the system prompt provided, here is how an AI configured with these instructions would likely respond to: "${question}"\n\nThis is a template-based simulation. Connect an AI backend for live generation.`
+    );
 
     return NextResponse.json({
       response,
       model: "AI Genome Arena",
-      tokens: completion.usage?.total_tokens || 0,
+      tokens: Math.ceil(response.split(/\s+/).length * 1.3),
     });
   } catch (error) {
     console.error("Battle error:", error);

@@ -79,7 +79,10 @@ export default function BattleSection() {
         }),
       ]);
 
-      const [dataA, dataB] = await Promise.all([resA.json(), resB.json()]);
+      const [dataA, dataB] = await Promise.all([
+        resA.ok ? resA.json() : Promise.resolve({ error: "Server error" }),
+        resB.ok ? resB.json() : Promise.resolve({ error: "Server error" }),
+      ]);
 
       if (dataA.error && dataB.error) {
         setBattleError("Both prompts failed to generate responses.");

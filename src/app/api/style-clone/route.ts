@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
+import { aiChat, styleCloneFallback } from "@/lib/ai-helper";
 
 export async function POST(request: Request) {
   try {
@@ -20,12 +20,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const zai = await ZAI.create();
-
     const styles: Record<string, string> = {
       claude: `Claude by Anthropic - warm, thoughtful, nuanced, uses careful hedging language like "I think" and "It seems", often acknowledges complexity, uses sophisticated vocabulary, adds qualifying statements, shows genuine curiosity, structured paragraphs, occasionally uses em dashes.`,
       chatgpt: `ChatGPT by OpenAI - friendly, structured, uses bullet points and numbered lists, adds emoji occasionally, clear headers, balanced tone between formal and casual, proactive in offering help, uses "I'd be happy to" type phrases, well-organized with bold text emphasis.`,
-      grok: `Grok by xAI - witty, sarcastic, casual, uses internet slang, makes pop culture references, says "bro" and "ngl", uses lowercase frequently, has a rebellious edge, adds humor even in serious topics, uses skull emoji 💀, very informal, direct and unfiltered.`,
+      grok: `Grok by xAI - witty, sarcastic, casual, uses internet slang, makes pop culture references, says "bro" and "ngl", uses lowercase frequently, has a rebellious edge, adds humor even in serious topics, uses skull emoji, very informal, direct and unfiltered.`,
       gemini: `Gemini by Google - precise, data-driven, references sources, technical yet accessible, structured with clear sections, uses "Based on" phrases, professional but not stiff, integrates research-style language, factual and evidence-based.`,
       perplexity: `Perplexity AI - citation-heavy, academic yet accessible, always references sources with [1][2], says "According to research", structured like a mini-research paper, adds follow-up questions at the end, very informative and factual.`,
     };
@@ -47,8 +45,8 @@ ${text}
 
 Return ONLY the rewritten text. No explanations, no markdown, no code blocks.`;
 
-    const completion = await zai.chat.completions.create({
-      messages: [
+    const rewritten = await aiChat(
+      [
         {
           role: "system",
           content:
@@ -56,11 +54,9 @@ Return ONLY the rewritten text. No explanations, no markdown, no code blocks.`;
         },
         { role: "user", content: stylePrompt },
       ],
-      temperature: 0.8,
-      max_tokens: 1500,
-    });
-
-    const rewritten = completion.choices?.[0]?.message?.content || "Failed to rewrite text.";
+      { temperature: 0.8, max_tokens: 1500 },
+      () => styleCloneFallback(text, style)
+    );
 
     return NextResponse.json({ rewritten, style });
   } catch (error) {

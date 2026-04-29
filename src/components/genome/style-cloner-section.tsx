@@ -73,6 +73,7 @@ export default function StyleClonerSection() {
   const handleClone = async (styleId: string) => {
     if (text.trim().length < 5 || !styleId) return;
     setIsCloning(true);
+    setSelectedStyle(styleId);
     setCloneErrors((prev) => {
       const next = { ...prev };
       delete next[styleId];
