@@ -17,6 +17,7 @@ import {
   Blend,
   ChevronDown,
   RotateCcw,
+  AlertCircle,
 } from "lucide-react";
 
 const traitOptions = [
@@ -52,6 +53,7 @@ export default function BreederSection() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [error, setError] = useState("");
 
   const toggleModel = (id: string) => {
     setSelectedModels((prev) =>
@@ -69,8 +71,12 @@ export default function BreederSection() {
     if (selectedModels.length === 0) return;
     setIsGenerating(true);
     setGeneratedPrompt("");
+    setError("");
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
       const response = await fetch("/api/breed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -80,23 +86,52 @@ export default function BreederSection() {
           taskDescription,
           tone: toneOptions.find((t) => t.id === selectedTone)?.label,
         }),
+        signal: controller.signal,
       });
 
-      const data = await response.json();
-      if (data.prompt) {
-        setGeneratedPrompt(data.prompt);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.error || `Server error: ${response.status}`);
       }
-    } catch {
-      setGeneratedPrompt("Error generating prompt. Please try again.");
+
+      const data = await response.json();
+
+      if (data.error) {
+        setError(data.error);
+      } else if (data.prompt) {
+        setGeneratedPrompt(data.prompt);
+      } else {
+        setError("No prompt was generated. Please try again.");
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") {
+        setError("Request timed out. The AI took too long to respond. Please try again with simpler options.");
+      } else {
+        setError("Failed to generate prompt. Please check your connection and try again.");
+      }
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(generatedPrompt);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(generatedPrompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for non-HTTPS environments
+      const textarea = document.createElement("textarea");
+      textarea.value = generatedPrompt;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const handleReset = () => {
@@ -105,7 +140,12 @@ export default function BreederSection() {
     setSelectedTone("formal");
     setTaskDescription("");
     setGeneratedPrompt("");
+    setError("");
   };
+
+  const selectedModelNames = selectedModels
+    .map((id) => aiModels.find((m) => m.id === id)?.name || id)
+    .join(", ");
 
   return (
     <div className="space-y-6">
@@ -217,6 +257,7 @@ export default function BreederSection() {
           {/* Advanced: Task Description */}
           <div>
             <button
+              type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-300 transition-colors"
             >
@@ -279,9 +320,82 @@ export default function BreederSection() {
         </Button>
       </div>
 
+      {/* Loading State */}
+      <AnimatePresence>
+        {isGenerating && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <Card className="bg-gradient-to-br from-slate-900 via-purple-950/20 to-slate-900 border-purple-500/20">
+              <CardContent className="p-8 text-center">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                  className="w-12 h-12 mx-auto mb-4"
+                >
+                  <Dna className="w-12 h-12 text-purple-400" />
+                </motion.div>
+                <h3 className="text-white font-semibold mb-2">
+                  Breeding your hybrid prompt...
+                </h3>
+                <p className="text-sm text-slate-400 max-w-md mx-auto">
+                  Mixing DNA from <strong className="text-purple-400">{selectedModelNames}</strong>.
+                  This may take 10-30 seconds.
+                </p>
+                <div className="flex justify-center gap-1 mt-4">
+                  {[0, 1, 2].map((i) => (
+                    <motion.div
+                      key={i}
+                      className="w-2 h-2 bg-purple-400 rounded-full"
+                      animate={{ y: [0, -8, 0] }}
+                      transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}
+                    />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Error State */}
+      <AnimatePresence>
+        {error && !isGenerating && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <Card className="bg-red-950/30 border-red-500/30">
+              <CardContent className="p-5">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-red-400 text-sm mb-1">
+                      Generation Failed
+                    </h4>
+                    <p className="text-xs text-slate-400">{error}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGenerate}
+                      className="mt-3 border-red-500/30 text-red-400 hover:bg-red-500/10"
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Generated Prompt */}
       <AnimatePresence>
-        {generatedPrompt && (
+        {generatedPrompt && !isGenerating && (
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -319,6 +433,13 @@ export default function BreederSection() {
                   <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">
                     {generatedPrompt}
                   </pre>
+                </div>
+                <div className="flex items-center gap-4 mt-3 text-xs text-slate-500">
+                  <span>{generatedPrompt.split(/\s+/).length} words</span>
+                  <span>·</span>
+                  <span>~{Math.ceil(generatedPrompt.split(/\s+/).length * 1.3)} tokens</span>
+                  <span>·</span>
+                  <span>Mixed from: {selectedModelNames}</span>
                 </div>
               </CardContent>
             </Card>

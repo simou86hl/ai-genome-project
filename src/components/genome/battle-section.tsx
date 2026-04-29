@@ -55,6 +55,7 @@ export default function BattleSection() {
     tie: 0,
   });
   const [voteResult, setVoteResult] = useState<"a" | "b" | "tie" | null>(null);
+  const [battleError, setBattleError] = useState("");
 
   const handleBattle = async () => {
     if (!promptA.trim() || !promptB.trim() || !question.trim()) return;
@@ -62,6 +63,7 @@ export default function BattleSection() {
     setResponseA(null);
     setResponseB(null);
     setVoteResult(null);
+    setBattleError("");
 
     try {
       const [resA, resB] = await Promise.all([
@@ -78,10 +80,18 @@ export default function BattleSection() {
       ]);
 
       const [dataA, dataB] = await Promise.all([resA.json(), resB.json()]);
-      if (dataA.response) setResponseA(dataA);
-      if (dataB.response) setResponseB(dataB);
+
+      if (dataA.error && dataB.error) {
+        setBattleError("Both prompts failed to generate responses.");
+      } else {
+        if (dataA.response) setResponseA(dataA);
+        if (dataB.response) setResponseB(dataB);
+        if (!dataA.response && !dataB.response) {
+          setBattleError("No responses generated. Please try again.");
+        }
+      }
     } catch {
-      // silent
+      setBattleError("Network error. Please check your connection and try again.");
     } finally {
       setIsBattling(false);
     }
@@ -215,6 +225,24 @@ export default function BattleSection() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Battle Error */}
+      <AnimatePresence>
+        {battleError && !isBattling && !responseA && !responseB && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+          >
+            <Card className="bg-red-950/30 border-red-500/30">
+              <CardContent className="p-4 text-center">
+                <p className="text-sm text-red-400">{battleError}</p>
+                <Button variant="outline" size="sm" onClick={handleBattle} className="mt-2 border-red-500/30 text-red-400 hover:bg-red-500/10">Try Again</Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Battle Results */}
       <AnimatePresence>

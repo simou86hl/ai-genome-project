@@ -68,24 +68,38 @@ export default function StyleClonerSection() {
   const [results, setResults] = useState<Record<string, string>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [cloneAll, setCloneAll] = useState(false);
+  const [cloneErrors, setCloneErrors] = useState<Record<string, string>>({});
 
   const handleClone = async (styleId: string) => {
     if (text.trim().length < 5 || !styleId) return;
     setIsCloning(true);
+    setCloneErrors((prev) => {
+      const next = { ...prev };
+      delete next[styleId];
+      return next;
+    });
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
       const response = await fetch("/api/style-clone", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: text.trim(), style: styleId }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       const data = await response.json();
       if (data.rewritten) {
         setResults((prev) => ({ ...prev, [styleId]: data.rewritten }));
+      } else {
+        setCloneErrors((prev) => ({ ...prev, [styleId]: "Failed to clone. Try again." }));
       }
     } catch {
-      // silent
+      setCloneErrors((prev) => ({ ...prev, [styleId]: "Network error. Check connection." }));
     } finally {
       setIsCloning(false);
     }
@@ -211,6 +225,22 @@ export default function StyleClonerSection() {
                   )}
                   Clone Style
                 </Button>
+
+                {/* Clone Error */}
+                <AnimatePresence>
+                  {cloneErrors[style.id] && !results[style.id] && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-3 p-2 bg-red-950/30 rounded-lg border border-red-500/20">
+                        <p className="text-xs text-red-400">{cloneErrors[style.id]}</p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* Result */}
                 <AnimatePresence>

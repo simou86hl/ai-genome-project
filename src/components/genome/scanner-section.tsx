@@ -15,6 +15,7 @@ import {
   TrendingUp,
   Copy,
   Check,
+  AlertCircle,
 } from "lucide-react";
 
 interface Grade {
@@ -63,31 +64,52 @@ export default function ScannerSection() {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const [scanError, setScanError] = useState("");
+
   const handleScan = async () => {
     if (prompt.trim().length < 10) return;
     setIsScanning(true);
     setResult(null);
+    setScanError("");
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
       const response = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: prompt.trim() }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
 
       const data = await response.json();
       if (data.overallScore !== undefined) {
         setResult(data);
+      } else if (data.error) {
+        setScanError(data.error);
+      } else {
+        setScanError("Unexpected response. Please try again.");
       }
-    } catch {
-      setResult(null);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") {
+        setScanError("Request timed out. Please try with a shorter prompt.");
+      } else {
+        setScanError("Failed to scan prompt. Please check your connection and try again.");
+      }
     } finally {
       setIsScanning(false);
     }
   };
 
   const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
+    try { navigator.clipboard.writeText(text); } catch { /* fallback */ }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -140,6 +162,24 @@ export default function ScannerSection() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Scan Error */}
+      <AnimatePresence>
+        {scanError && !isScanning && !result && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+          >
+            <Card className="bg-red-950/30 border-red-500/30">
+              <CardContent className="p-4">
+                <p className="text-sm text-red-400">{scanError}</p>
+                <Button variant="outline" size="sm" onClick={handleScan} className="mt-2 border-red-500/30 text-red-400 hover:bg-red-500/10">Try Again</Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Results */}
       <AnimatePresence>
